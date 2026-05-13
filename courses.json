@@ -1,0 +1,20 @@
+[
+  {
+    "id": 1,
+    "title": "Python for Beginners",
+    "category": "Programming",
+    "level": "Beginner"
+  },
+  {
+    "id": 2,
+    "title": "Data Science Bootcamp",
+    "category": "Data Science",
+    "level": "Intermediate"
+  },
+  {
+    "id": 3,
+    "title": "AI and Machine Learning",
+    "category": "Artificial Intelligence",
+    "level": "Intermediate"
+  }
+]
