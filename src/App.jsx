@@ -9,7 +9,14 @@ import {
   AlertTriangle,
   Trophy,
   Send,
+  BookOpen,
 } from "lucide-react";
+import { QuizzesPortal } from "./components/QuizzesPortal";
+import { RoleSelection } from "./components/RoleSelection";
+import { PlacementTest } from "./components/PlacementTest";
+import { RoadmapTimeline } from "./components/RoadmapTimeline";
+import { QuizFeedback } from "./components/QuizFeedback";
+import { studentDB } from "./utils/StudentDatabase";
 import {
   BarChart,
   Bar,
@@ -25,8 +32,11 @@ import {
 const API = "http://127.0.0.1:5000";
 
 function App() {
+  const [userRole, setUserRole] = useState(null); // null = selection, "student" or "instructor"
   const [activePage, setActivePage] = useState("onboarding");
+  const [testCompleted, setTestCompleted] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [studentFeedback, setStudentFeedback] = useState({});
 
   const [student, setStudent] = useState({
     name: "",
@@ -46,34 +56,45 @@ function App() {
     },
   ]);
 
-  const instructorStats = {
-    totalLearners: 45,
-    averageCompletion: "68%",
-    atRisk: 7,
-    dropoutRisk: "Medium",
-    weakTopics: ["Python Loops", "SQL Joins", "Data Cleaning", "ML Models"],
-    topPerformers: ["Ayesha", "Hamza", "Zain"],
+  const students = studentDB.getAllStudents();
+
+  // Dynamic chart data based on student performance
+  const categoryStats = {
+    Programming: Math.round(students.reduce((sum, s) => sum + (s.categoryScores?.Programming || 0), 0) / Math.max(students.length, 1)),
+    Database: Math.round(students.reduce((sum, s) => sum + (s.categoryScores?.Database || 0), 0) / Math.max(students.length, 1)),
+    Analytics: Math.round(students.reduce((sum, s) => sum + (s.categoryScores?.Analytics || 0), 0) / Math.max(students.length, 1)),
+    ML: Math.round(students.reduce((sum, s) => sum + (s.categoryScores?.ML || 0), 0) / Math.max(students.length, 1)),
   };
 
-  const students = [
-    { name: "Ali", progress: 32, quiz: 45, weak: "Python Basics" },
-    { name: "Sara", progress: 61, quiz: 72, weak: "SQL Joins" },
-    { name: "Ahmed", progress: 78, quiz: 88, weak: "ML Models" },
-    { name: "Mina", progress: 38, quiz: 49, weak: "Data Cleaning" },
+  const chartData = [
+    { course: "Programming", learners: categoryStats.Programming },
+    { course: "Database", learners: categoryStats.Database },
+    { course: "Analytics", learners: categoryStats.Analytics },
+    { course: "ML", learners: categoryStats.ML },
   ];
 
-  const chartData = [
-    { course: "Python", learners: 30 },
-    { course: "SQL", learners: 22 },
-    { course: "AI", learners: 18 },
-    { course: "Cloud", learners: 12 },
-  ];
+  // Dynamic risk distribution
+  const highRiskCount = students.filter(s => s.progress < 40 || s.quizScore < 50).length;
+  const mediumRiskCount = students.filter(s => (s.progress >= 40 && s.progress < 70) || (s.quizScore >= 50 && s.quizScore < 70)).length;
+  const lowRiskCount = students.filter(s => s.progress >= 70 && s.quizScore >= 70).length;
 
   const riskData = [
-    { name: "High Risk", value: 7 },
-    { name: "Medium Risk", value: 14 },
-    { name: "Low Risk", value: 24 },
+    { name: "High Risk", value: highRiskCount },
+    { name: "Medium Risk", value: mediumRiskCount },
+    { name: "Low Risk", value: lowRiskCount },
   ];
+
+  const instructorStats = {
+    totalLearners: students.length,
+    averageCompletion: `${Math.round(students.reduce((sum, s) => sum + s.progress, 0) / Math.max(students.length, 1))}%`,
+    atRisk: highRiskCount,
+    dropoutRisk: highRiskCount > 1 ? "High" : "Medium",
+    weakTopics: students
+      .flatMap(s => Object.entries(s.categoryScores || {}).filter(([_, score]) => score < 60).map(([cat, _]) => cat))
+      .filter((v, i, a) => a.indexOf(v) === i)
+      .slice(0, 4),
+    topPerformers: students.filter(s => s.quizScore >= 80).map(s => s.name).slice(0, 3),
+  };
 
   const riskColor = ["#ef4444", "#f59e0b", "#22c55e"];
 
@@ -136,9 +157,23 @@ function App() {
     }
   };
 
+  const handleFeedbackSubmit = (studentId, feedbackText) => {
+    setStudentFeedback((prev) => ({
+      ...prev,
+      [studentId]: {
+        text: feedbackText,
+        date: new Date().toLocaleDateString(),
+      },
+    }));
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-white flex">
-      <aside className="w-72 bg-slate-900 border-r border-slate-800 p-6 hidden md:block">
+      {userRole === null ? (
+        <RoleSelection onSelectRole={setUserRole} />
+      ) : (
+        <>
+          <aside className="w-72 bg-slate-900 border-r border-slate-800 p-6 hidden md:block">
         <div className="flex items-center gap-3 mb-10">
           <div className="bg-cyan-500 p-3 rounded-2xl">
             <Sparkles className="text-white" />
@@ -150,45 +185,95 @@ function App() {
         </div>
 
         <nav className="space-y-3">
-          <NavButton
-            label="Onboarding"
-            icon={<GraduationCap />}
-            active={activePage === "onboarding"}
-            onClick={() => setActivePage("onboarding")}
-          />
-          <NavButton
-            label="Student Dashboard"
-            icon={<LayoutDashboard />}
-            active={activePage === "student"}
-            onClick={() => setActivePage("student")}
-          />
-          <NavButton
-            label="AI Mentor"
-            icon={<Bot />}
-            active={activePage === "mentor"}
-            onClick={() => setActivePage("mentor")}
-          />
-          <NavButton
-            label="Instructor Analytics"
-            icon={<BarChart3 />}
-            active={activePage === "instructor"}
-            onClick={() => setActivePage("instructor")}
-          />
+          {userRole === "student" ? (
+            <>
+              <NavButton
+                label="Onboarding"
+                icon={<GraduationCap />}
+                active={activePage === "onboarding"}
+                onClick={() => setActivePage("onboarding")}
+              />
+              <NavButton
+                label="Dashboard"
+                icon={<LayoutDashboard />}
+                active={activePage === "student"}
+                onClick={() => setActivePage("student")}
+              />
+              <NavButton
+                label="My Quizzes"
+                icon={<BookOpen />}
+                active={activePage === "quizzes"}
+                onClick={() => setActivePage("quizzes")}
+              />
+              <NavButton
+                label="AI Mentor"
+                icon={<Bot />}
+                active={activePage === "mentor"}
+                onClick={() => setActivePage("mentor")}
+              />
+            </>
+          ) : (
+            <>
+              <NavButton
+                label="Quiz Management"
+                icon={<BookOpen />}
+                active={activePage === "quizzes"}
+                onClick={() => setActivePage("quizzes")}
+              />
+              <NavButton
+                label="Analytics"
+                icon={<BarChart3 />}
+                active={activePage === "instructor"}
+                onClick={() => setActivePage("instructor")}
+              />
+              <NavButton
+                label="Student Feedback"
+                icon={<Send />}
+                active={activePage === "feedback"}
+                onClick={() => setActivePage("feedback")}
+              />
+            </>
+          )}
+
+          <button
+            onClick={() => setUserRole(null)}
+            className="w-full flex items-center gap-3 p-3 rounded-xl text-slate-300 hover:bg-slate-800 transition mt-6 border border-slate-700"
+          >
+            <span className="w-5 h-5">👤</span>
+            Switch Role
+          </button>
         </nav>
       </aside>
 
       <main className="flex-1 p-6 md:p-10 overflow-y-auto">
-        <header className="mb-8">
-          <h1 className="text-3xl md:text-4xl font-bold">
-            Atomcamp AI Adaptive Learning Layer
-          </h1>
-          <p className="text-slate-400 mt-2">
-            AI-powered personalization and instructor intelligence for
-            Atomcamp’s existing learning platform.
-          </p>
+        <header className="mb-8 flex justify-between items-start">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-bold">
+              Atomcamp AI Adaptive Learning Layer
+            </h1>
+            <p className="text-slate-400 mt-2">
+              {userRole === "student"
+                ? "Your personalized learning journey"
+                : "Instructor dashboard for student management"}
+            </p>
+          </div>
+          <span className="bg-cyan-500/20 text-cyan-300 px-4 py-2 rounded-full text-sm font-semibold border border-cyan-500/30">
+            {userRole === "student" ? "👨‍🎓 Student" : "👨‍🏫 Instructor"}
+          </span>
         </header>
 
-        {activePage === "onboarding" && (
+        {activePage === "onboarding" && userRole === "student" && !testCompleted && (
+          <section className="space-y-8">
+            <PlacementTest
+              onTestComplete={(results) => {
+                setTestCompleted(true);
+                setActivePage("student");
+              }}
+            />
+          </section>
+        )}
+
+        {activePage === "onboarding" && userRole === "student" && testCompleted && (
           <section className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div className="bg-slate-900 rounded-3xl p-7 border border-slate-800 shadow-xl">
               <h2 className="text-2xl font-bold mb-2">Student Onboarding</h2>
@@ -278,7 +363,7 @@ function App() {
           </section>
         )}
 
-        {activePage === "student" && (
+        {activePage === "student" && userRole === "student" && (
           <section className="space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
               <Card title="Progress" value="64%" />
@@ -289,13 +374,14 @@ function App() {
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               <div className="lg:col-span-2 bg-slate-900 rounded-3xl p-7 border border-slate-800">
-                <h2 className="text-2xl font-bold mb-4">
-                  Personalized AI Roadmap
-                </h2>
-                <pre className="whitespace-pre-wrap text-slate-300 leading-7">
-                  {roadmap ||
-                    "Submit onboarding form to generate personalized roadmap."}
-                </pre>
+                <h2 className="text-2xl font-bold mb-6">Personalized AI Roadmap</h2>
+                {roadmap ? (
+                  <RoadmapTimeline roadmapText={roadmap} />
+                ) : (
+                  <div className="text-slate-400 text-center py-8">
+                    Complete onboarding to generate your personalized roadmap.
+                  </div>
+                )}
               </div>
 
               <div className="bg-slate-900 rounded-3xl p-7 border border-slate-800">
@@ -321,7 +407,13 @@ function App() {
           </section>
         )}
 
-        {activePage === "mentor" && (
+        {activePage === "quizzes" && (
+          <section>
+            <QuizzesPortal userRole={userRole} />
+          </section>
+        )}
+
+        {activePage === "mentor" && userRole === "student" && (
           <section className="bg-slate-900 rounded-3xl border border-slate-800 p-7 max-w-4xl">
             <h2 className="text-2xl font-bold mb-5">AI Mentor Chatbot</h2>
 
@@ -357,7 +449,7 @@ function App() {
           </section>
         )}
 
-        {activePage === "instructor" && (
+        {activePage === "instructor" && userRole === "instructor" && (
           <section className="space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
               <Card title="Total Learners" value={instructorStats.totalLearners} />
@@ -472,7 +564,47 @@ function App() {
             </div>
           </section>
         )}
+
+        {activePage === "feedback" && userRole === "instructor" && (
+          <section className="space-y-8">
+            <div>
+              <h2 className="text-3xl font-bold mb-2">Student Feedback</h2>
+              <p className="text-slate-400">
+                Provide personalized feedback to students based on their quiz performance
+              </p>
+            </div>
+            <QuizFeedback students={students} onSubmitFeedback={handleFeedbackSubmit} />
+
+            {/* Feedback History */}
+            {Object.keys(studentFeedback).length > 0 && (
+              <div className="bg-slate-900 rounded-3xl border border-slate-800 p-7">
+                <h3 className="text-2xl font-bold mb-5">Feedback History</h3>
+                <div className="space-y-4">
+                  {Object.entries(studentFeedback).map(([studentId, fb]) => {
+                    const student = students.find((s) => s.id == studentId);
+                    return (
+                      <div key={studentId} className="bg-slate-800 rounded-2xl p-5 border border-slate-700">
+                        <div className="flex items-start justify-between mb-3">
+                          <div>
+                            <h4 className="font-bold text-lg">{student?.name}</h4>
+                            <p className="text-sm text-slate-400">Sent on {fb.date}</p>
+                          </div>
+                          <span className="px-3 py-1 rounded-full bg-cyan-500/20 text-cyan-300 text-xs font-semibold">
+                            Feedback Sent
+                          </span>
+                        </div>
+                        <p className="text-slate-300 whitespace-pre-wrap">{fb.text}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
       </main>
+        </>
+      )}
     </div>
   );
 }
